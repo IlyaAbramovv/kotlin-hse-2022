@@ -39,17 +39,9 @@ private fun StringBuilder.serializeString(value: String) = apply {
 
 private fun <T : Any> StringBuilder.serializeHeader(klass: KClass<T>) = apply {
     val properties = klass.memberProperties.filter { it.findAnnotation<CsvIgnore>() == null }
-
-    when (klass) {
-        String::class -> {
-            serializeString("value")
-        }
-        else -> {
-            properties.joinTo(this, ",") { p ->
-                serializeString(p.name)
-                ""
-            }
-        }
+    properties.joinTo(this, ",") { p ->
+        serializeString(p.name)
+        ""
     }
     append("\n")
 }
