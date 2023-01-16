@@ -82,97 +82,78 @@ interface NDArray : SizeAware, DimentionAware {
  *
  * Инициализация - через factory-методы ones(shape: Shape), zeros(shape: Shape) и метод copy
  */
-class DefaultNDArray private constructor(number: Int = 0, private val shape: Shape) : NDArray {
+class DefaultNDArray private constructor(
+    number: Int = 0,
+    private val shape: Shape,
+    private var array: IntArray = IntArray(shape.size) { number }
+) : NDArray {
 
     override val ndim: Int = shape.ndim
-    override fun dim(i: Int): Int = shape.dim(i)
     override val size: Int = shape.size
 
-    private var array: IntArray = IntArray(size) { number }
+    override fun dim(i: Int): Int = shape.dim(i)
 
-    private fun convertIndexToPoint(index: Int): Point {
-        var k = index
-        val pointCoordinates = IntArray(this.ndim)
-        for (i in 0 until this.ndim) {
-            val dimProduct = this.shape.getDimensionsProductStartsWithIndex(i)
-            pointCoordinates[i] = k / dimProduct
-            k %= dimProduct
+    override fun at(point: Point): Int {
+        if (point.ndim != this.ndim)
+            throw NDArrayException.IllegalPointDimensionException(point.ndim, this.ndim)
+        assertPointHasCorrectCoordinates(point)
+        return array[convertPointToArrayIndex(point)]
+    }
+
+    override fun set(point: Point, value: Int) {
+        if (point.ndim != this.ndim)
+            throw NDArrayException.IllegalPointDimensionException(point.ndim, this.ndim)
+        assertPointHasCorrectCoordinates(point)
+        array[convertPointToArrayIndex(point)] = value
+    }
+
+    private fun assertPointHasCorrectCoordinates(point: Point) {
+        for (i in 0 until point.ndim) {
+            if (point.dim(i) > this.dim(i) || point.dim(i) < 0)
+                throw NDArrayException.IllegalPointCoordinateException(i)
         }
-        return DefaultPoint(*pointCoordinates)
     }
 
     private fun convertPointToArrayIndex(point: Point): Int =
         (0 until point.ndim)
             .fold(0) { acc, i -> acc + point.dim(i) * shape.getDimensionsProductStartsWithIndex(i) }
 
-
-    private fun elementHasSameDimensions(element: DimentionAware): Boolean {
-        for (i in 0 until ndim) if (this.dim(i) != element.dim(i)) return false
-        return element.ndim == this.ndim
-    }
-
-    private fun pointHasCorrectCoordinates(point: Point): Boolean {
-        for (i in 0 until point.ndim) if (point.dim(i) > this.dim(i)) return false
-        return true
-    }
-
-    private fun pointHasIncorrectCoordinates(point: Point): Boolean = !pointHasCorrectCoordinates(point)
-
-    private fun assertPointHasCorrectCoordinates(point: Point) {
-        for (i in 0 until point.ndim) if (point.dim(i) > this.dim(i))
-            throw NDArrayException.IllegalPointCoordinateException(i, point.dim(i), this.dim(i))
-    }
-
-    constructor(number: Int = 0, shape: Shape, arrayToCopy: IntArray) : this(number, shape) {
-        this.array = arrayToCopy
-    }
-
-    override fun at(point: Point): Int {
-        if (point.ndim != this.ndim) throw NDArrayException.IllegalPointDimensionException(point.ndim, this.ndim)
-        assertPointHasCorrectCoordinates(point)
-        return array[convertPointToArrayIndex(point)]
-    }
-
-    override fun set(point: Point, value: Int) {
-        if (point.ndim != this.ndim) throw NDArrayException.IllegalPointDimensionException(point.ndim, this.ndim)
-        assertPointHasCorrectCoordinates(point)
-        array[convertPointToArrayIndex(point)] = value
-    }
-
-    override fun copy(): NDArray = DefaultNDArray(shape = this.shape, arrayToCopy = this.array.copyOf())
-
-    companion object {
-        fun ones(shape: Shape): NDArray = DefaultNDArray(number = 1, shape = shape)
-        fun zeros(shape: Shape): NDArray = DefaultNDArray(number = 0, shape = shape)
-    }
-
-    internal inner class DefaultNDArrayView : NDArray {
-        override val ndim: Int
-            get() = this@DefaultNDArray.ndim
-
-        override fun dim(i: Int) = this@DefaultNDArray.dim(i)
-        override val size: Int
-            get() = this@DefaultNDArray.size
-
-        override fun at(point: Point): Int = this@DefaultNDArray.at(point)
-        override fun set(point: Point, value: Int) = this@DefaultNDArray.set(point, value)
-        override fun copy(): NDArray = this@DefaultNDArray.copy()
-        override fun view(): NDArray = this@DefaultNDArray.view()
-        override fun add(other: NDArray) = this@DefaultNDArray.add(other)
-        override fun dot(other: NDArray): NDArray = this@DefaultNDArray.dot(other)
-    }
-
-    override fun view(): NDArray = DefaultNDArrayView()
+    override fun copy(): NDArray = DefaultNDArray(shape = this.shape, array = this.array.copyOf())
 
     override fun add(other: NDArray) {
         when {
-            elementHasSameDimensions(other) -> for (i in array.indices) array[i] += other.at(convertIndexToPoint(i))
+            elementHasSameDimensions(other) ->
+                for (i in array.indices) {
+                    array[i] += other.at(convertIndexToPoint(i, other.ndim))
+                }
             (this.ndim - 1 == other.ndim) && (0 until other.ndim).all { this.dim(it) == other.dim(it) } ->
-                for (i in array.indices) array[i] += other.at(convertIndexToPoint((i + 1) / (size / other.size)))
+                for (i in array.indices) {
+                    array[i] += other.at(convertIndexToPoint(i / (size / other.size), other.ndim))
+                }
             else -> throw NDArrayException.IllegalNDArrayDimensionException(
                 "It's only possible to make \"add\" between NDArrays with dimensions differ by no more than one"
             )
         }
+    }
+
+    private fun elementHasSameDimensions(element: DimentionAware): Boolean {
+        if (element.ndim != this.ndim) return false
+        for (i in 0 until ndim) {
+            if (this.dim(i) != element.dim(i)) return false
+        }
+        return true
+    }
+
+    private fun convertIndexToPoint(index: Int, ndim: Int): Point {
+        var k = index
+        val pointCoordinates = IntArray(ndim)
+        for (i in 0 until ndim) {
+            var dimProduct = this.shape.getDimensionsProductStartsWithIndex(i)
+            if (ndim != this.ndim) dimProduct /= this.shape.dim(this.ndim - 1)
+            pointCoordinates[i] = k / dimProduct
+            k %= dimProduct
+        }
+        return DefaultPoint(*pointCoordinates)
     }
 
     override fun dot(other: NDArray): NDArray {
@@ -183,8 +164,10 @@ class DefaultNDArray private constructor(number: Int = 0, private val shape: Sha
             throw NDArrayException.IllegalNDArrayDimensionException(
                 "It's only possible to multiply matrices if their dimensions are compatible"
             )
+        val otherIsMatrix = other.ndim > 1
         val otherSecondDim = if (other.ndim > 1) other.dim(1) else 1
-        val matrixProduct = zeros(DefaultShape(dim(0), otherSecondDim))
+        val matrixProduct =
+            if (otherIsMatrix) zeros(DefaultShape(dim(0), otherSecondDim)) else zeros(DefaultShape(dim(0)))
         for (i in 0 until dim(0)) {
             for (j in 0 until otherSecondDim) {
                 var matrixProductValue = 0
@@ -192,17 +175,27 @@ class DefaultNDArray private constructor(number: Int = 0, private val shape: Sha
                     matrixProductValue += at(DefaultPoint(i, k)) *
                             if (other.ndim > 1) other.at(DefaultPoint(k, j)) else other.at(DefaultPoint(k))
                 }
-                matrixProduct.set(point = DefaultPoint(i, j), value = matrixProductValue)
+                val point = if (otherIsMatrix) DefaultPoint(i, j) else DefaultPoint(i)
+                matrixProduct.set(point = point, value = matrixProductValue)
             }
         }
         return matrixProduct
     }
+
+    override fun view(): NDArray = DefaultNDArrayView()
+
+    internal inner class DefaultNDArrayView : NDArray by this@DefaultNDArray
+
+    companion object {
+        fun ones(shape: Shape): NDArray = DefaultNDArray(number = 1, shape = shape)
+        fun zeros(shape: Shape): NDArray = DefaultNDArray(number = 0, shape = shape)
+    }
 }
 
 sealed class NDArrayException(reason: String = "Unknown") : Exception(reason) {
-    class IllegalPointCoordinateException(index: Int, pointDim: Int, ndArrayDim: Int) :
+    class IllegalPointCoordinateException(index: Int) :
         NDArrayException(
-            "Point coordinate number $index is greater than $index'ths dimension of the NDArray ($pointDim > $ndArrayDim)"
+            "Point coordinate number $index is greater than $index'ths dimension of the NDArray or less than zero"
         )
 
     class IllegalPointDimensionException(pointNDim: Int, ndArrayNDim: Int) : NDArrayException(

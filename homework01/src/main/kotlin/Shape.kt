@@ -30,15 +30,16 @@ class DefaultShape(private vararg val dimensions: Int) : Shape {
 
     override val size: Int = dimensions.reduce { acc, i -> acc * i }
 
-    private val dimensionsProductCache = IntArray(ndim)
-    override fun getDimensionsProductStartsWithIndex(startsWith: Int): Int {
-        return if (dimensionsProductCache[startsWith] != 0) dimensionsProductCache[startsWith]
-        else {
-            dimensionsProductCache[startsWith] = dimensions.drop(startsWith + 1).fold(1) { acc, i -> acc * i }
-            dimensionsProductCache[startsWith]
+    private fun getDimensionsProductCache(): IntArray {
+        val arr = IntArray(ndim) { 1 }
+        for (i in ndim - 2 downTo 0) {
+            arr[i] = arr[i + 1] * dim(i + 1)
         }
+        return arr
     }
 
+    private val dimensionsProductCache: IntArray = getDimensionsProductCache()
+    override fun getDimensionsProductStartsWithIndex(startsWith: Int): Int = dimensionsProductCache[startsWith]
 }
 
 sealed class ShapeArgumentException(reason: String = "") : IllegalArgumentException(reason) {
