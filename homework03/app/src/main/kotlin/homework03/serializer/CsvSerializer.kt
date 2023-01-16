@@ -7,19 +7,12 @@ import kotlin.reflect.full.memberProperties
 @Target(AnnotationTarget.PROPERTY)
 annotation class CsvIgnore
 
-fun <T: Any> csvSerialize(data: Iterable<T>, klass: KClass<T>) = buildString { serializeObject(data, klass) }
+fun <T : Any> csvSerialize(data: Iterable<T>, klass: KClass<T>) = buildString { serializeObject(data, klass) }
 
-private fun <T: Any> StringBuilder.serializeObject(data: Iterable<T>, klass: KClass<T>) {
-//    serializeHeader(klass)
-//    append("\n")
-
-    if (data.any {
-            it.javaClass.kotlin != klass
-        }) throw IllegalArgumentException("not all types match")
-
+private fun <T : Any> StringBuilder.serializeObject(data: Iterable<T>, klass: KClass<T>) {
+    serializeHeader(klass)
     data.forEach {
         serializeObject(it)
-        append("\n")
     }
 }
 
@@ -28,8 +21,7 @@ private fun StringBuilder.serializeNumber(value: Number) = apply {
 }
 
 private fun StringBuilder.serializeValue(value: Any) = apply {
-    val kClass = value.javaClass.kotlin
-    when (kClass) {
+    when (value.javaClass.kotlin) {
         String::class -> {
             serializeString(value as String)
         }
@@ -41,12 +33,11 @@ private fun StringBuilder.serializeValue(value: Any) = apply {
 
 private fun StringBuilder.serializeString(value: String) = apply {
     append('"')
-    append(value)
+    append(value.replace("\"", "\"\""))
     append('"')
 }
 
-private fun <T: Any> StringBuilder.serializeHeader(klass: KClass<T>) = apply {
-    append("")
+private fun <T : Any> StringBuilder.serializeHeader(klass: KClass<T>) = apply {
     val properties = klass.memberProperties.filter { it.findAnnotation<CsvIgnore>() == null }
 
     when (klass) {
@@ -60,26 +51,15 @@ private fun <T: Any> StringBuilder.serializeHeader(klass: KClass<T>) = apply {
             }
         }
     }
-}
-
-fun <T: Any> csvSerializeHeader(klass: KClass<T>) = buildString {
-    serializeHeader(klass)
     append("\n")
 }
 
 private fun StringBuilder.serializeObject(value: Any) {
     val kClass = value.javaClass.kotlin
     val properties = kClass.memberProperties.filter { it.findAnnotation<CsvIgnore>() == null }
-
-    when (kClass) {
-        String::class -> {
-            serializeString(value as String)
-        }
-        else -> {
-            properties.joinTo(this, ",") { p ->
-                serializeValue(p.get(value) ?: "")
-                ""
-            }
-        }
+    properties.joinTo(this, ",") { p ->
+        serializeValue(p.get(value) ?: "")
+        ""
     }
+    append("\n")
 }
