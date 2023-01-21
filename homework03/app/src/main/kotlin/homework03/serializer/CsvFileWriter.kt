@@ -9,7 +9,6 @@ import com.soywiz.korio.file.std.localCurrentDirVfs
 import com.soywiz.korio.file.useVfs
 import homework03.RedditClient
 import homework03.json.TopicSnapshot
-import io.ktor.client.*
 
 internal class CsvFileWriter {
     companion object {
@@ -32,15 +31,14 @@ internal class CsvFileWriter {
             topic: TopicSnapshot,
             name: String,
             cwd: VfsFile,
-            redditClient: RedditClient,
-            httpClient: HttpClient
+            redditClient: RedditClient
         ) {
             cwd["$name-${topic.requestTime}-comments.csv"].useVfs {
                 val reachableDiscussionsIds = topic.reachableDiscussionsInfo.map { it.id }
                 coroutineScope {
                     for (commentId in reachableDiscussionsIds) {
                         launch {
-                            val comment = redditClient.getComments(commentId, httpClient)
+                            val comment = redditClient.getComments(commentId)
                             it.writeString(csvSerialize(comment.comments, SingleCommentSnapshot::class))
                         }
                     }
@@ -51,8 +49,7 @@ internal class CsvFileWriter {
         suspend fun writeTopicAndComments(
             topic: TopicSnapshot,
             name: String,
-            redditClient: RedditClient,
-            httpClient: HttpClient
+            redditClient: RedditClient
         ) {
             val cwd = localCurrentDirVfs
             coroutineScope {
@@ -60,7 +57,7 @@ internal class CsvFileWriter {
                     writeTopics(topic, name, cwd)
                 }
                 launch {
-                    writeComments(topic, name, cwd, redditClient, httpClient)
+                    writeComments(topic, name, cwd, redditClient)
                 }
             }
         }
