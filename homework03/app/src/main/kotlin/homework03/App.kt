@@ -1,8 +1,6 @@
 package homework03
 
 import homework03.serializer.CsvFileWriter
-import io.ktor.client.*
-import io.ktor.client.engine.cio.*
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -19,12 +17,11 @@ fun main(args: Array<String>) = runBlocking {
         println("Cant create file; got: $exception")
     }
 
-    val httpClient = HttpClient(CIO)
     supervisorScope {
         for (topicName in args) {
             launch(handler) {
-                val topic = client.getTopic(topicName, httpClient)
-                CsvFileWriter.writeTopicAndComments(topic, topicName, client, httpClient)
+                val topic = client.getTopic(topicName)
+                CsvFileWriter.writeTopicAndComments(topic, topicName, client)
             }
         }
     }

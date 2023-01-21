@@ -3,10 +3,7 @@ package homework03
 import com.fasterxml.jackson.databind.JsonMappingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.treeToValue
-import com.fasterxml.jackson.module.kotlin.readValue
+import com.fasterxml.jackson.module.kotlin.*
 import homework03.json.*
 import homework03.json.Listing
 import homework03.json.SingleCommentSnapshot
@@ -18,53 +15,46 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 
-internal class RedditClient {
+class RedditClient {
+    private val httpClient = HttpClient(CIO)
 
-    private suspend fun requestData(client: HttpClient, link: String, name: String): String {
-        val request = client.request(link)
+    private suspend fun requestData(link: String, name: String): String {
+        val request = httpClient.request(link)
         if (!request.status.isSuccess()) throw RedditClientException.PageGettingException(name)
         return request.bodyAsText()
     }
 
-    suspend fun getTopic(name: String, client: HttpClient): TopicSnapshot =
+    suspend fun getTopic(name: String): TopicSnapshot =
 
         coroutineScope {
             val mapper = jacksonObjectMapper()
+            val mapperWrapper = JacksonMapperWrapper(mapper, name)
 
             val json = async {
-                requestData(client, RedditUrlBuilder.getJsonPageUrl(name), name)
+                requestData(RedditUrlBuilder.getJsonPageUrl(name), name)
             }
             val jsonInfo = async {
-                requestData(client, RedditUrlBuilder.getJsonAboutPageUrl(name), name)
+                requestData(RedditUrlBuilder.getJsonAboutPageUrl(name), name)
             }
 
             val discussions = async {
-                try {
-                    val discussionsInfo: Listing = mapper.readValue(json.await())
-                    discussionsInfo.data.children.map { it.data }
-                } catch (e: JsonMappingException) {
-                    throw RedditClientException.JsonParsingException()
-                }
+                val discussionsInfo: Listing = mapperWrapper.readValue(json.await())
+                discussionsInfo.data.children.map { it.data }
             }
 
-            try {
-                val info: JsonSubredditInfoRepresentation = mapper.readValue(jsonInfo.await())
-                val subredditInfo = info.data
-                TopicSnapshot(
-                    subredditInfo.creationTime,
-                    subredditInfo.subscribersOnline,
-                    subredditInfo.public_description,
-                    discussions.await(),
-                    subredditInfo.id
-                )
-            } catch (e: MissingKotlinParameterException) {
-                throw RedditClientException.JsonParsingException("Error in $name: Invalid Json file given")
-            }
-
+            val info: JsonSubredditInfoRepresentation = mapperWrapper.readValue(jsonInfo.await())
+            val subredditInfo = info.data
+            TopicSnapshot(
+                subredditInfo.creationTime,
+                subredditInfo.subscribersOnline,
+                subredditInfo.public_description,
+                discussions.await(),
+                subredditInfo.id
+            )
         }
 
-    suspend fun getComments(name: String, client: HttpClient): CommentsSnapshot {
-        val request = client.request(RedditUrlBuilder.getJsonPageUrlById(name))
+    suspend fun getComments(name: String): CommentsSnapshot {
+        val request = httpClient.request(RedditUrlBuilder.getJsonPageUrlById(name))
         if (!request.status.isSuccess()) throw RedditClientException.PageGettingException(name)
         val json = request.bodyAsText()
         val mapper = jacksonObjectMapper()
@@ -119,6 +109,18 @@ object RedditUrlBuilder {
     internal fun getJsonPageUrl(name: String) = "$redditLink/r/$name/$jsonPageSuffix"
     internal fun getJsonAboutPageUrl(name: String) = "$redditLink/r/$name/$jsonAboutPageSuffix"
     internal fun getJsonPageUrlById(id: String) = "$redditLink/$id/$jsonPageSuffix"
+}
+
+class JacksonMapperWrapper(val mapper: ObjectMapper, val topicName: String) {
+    inline fun <reified T> readValue(content: String): T {
+        try {
+            return mapper.readValue(content, jacksonTypeRef<T>())
+        } catch (e: JsonMappingException) {
+            throw RedditClientException.JsonParsingException()
+        } catch (e: MissingKotlinParameterException) {
+            throw RedditClientException.JsonParsingException("Error in $topicName: Invalid Json file given")
+        }
+    }
 }
 
 sealed class RedditClientException(reason: String) : RuntimeException(reason) {
