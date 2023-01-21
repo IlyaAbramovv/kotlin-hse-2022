@@ -2,7 +2,7 @@ package homework03.json
 
 import homework03.serializer.CsvIgnore
 
-internal data class TopicSnapshot(
+data class TopicSnapshot(
     val creationTime: Long,
     val subscribersOnline: Int,
     val description: String,

@@ -1,6 +1,6 @@
 package homework03.json
 
-internal data class SingleCommentSnapshot(
+data class SingleCommentSnapshot(
     val publicationDate: Long,
     val ups: Int,
     val downs: Int,
@@ -9,5 +9,4 @@ internal data class SingleCommentSnapshot(
     val id: String,
     val replyTo: String,
     val depth: Int
-
 )
